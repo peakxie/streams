@@ -2,7 +2,6 @@ package packet
 
 import (
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/32bitkid/bitreader"
@@ -30,6 +29,17 @@ func (dec *DecPSPackage) DecPackHeader(br bitreader.BitReader) ([]byte, error) {
 	startcode, err := br.Read32(32)
 	if err != nil {
 		return nil, err
+	}
+	if startcode == StartCodeAudio {
+		audioPayloadLen, err := br.Read32(16)
+		if err != nil {
+			return nil, err
+		}
+		br.Skip(uint(audioPayloadLen * 8))
+		startcode, err = br.Read32(32)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if startcode != StartCodePS {
 		return nil, ErrNotFoundStartCode
@@ -296,7 +306,6 @@ func (dec *DecPSPackage) decPESPacket(br bitreader.BitReader) error {
 		payloadlen--
 
 		if ptsFlag >= 2 && pesHeaderDataLen >= 5 {
-			fmt.Println(ptsFlag, "   ", pesHeaderDataLen)
 			var len uint32 = 0
 			dec.Pts, len, err = readTimeStamp(0, br)
 			if err != nil {
