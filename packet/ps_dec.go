@@ -1,6 +1,7 @@
 package packet
 
 import (
+	"errors"
 	"io"
 
 	"github.com/32bitkid/bitreader"
@@ -18,6 +19,9 @@ type DecPSPackage struct {
 	rawLen          int
 	videoStreamType uint32
 	audioStreamType uint32
+
+	iframe bool
+	pts    uint32
 }
 
 func (dec *DecPSPackage) decPackHeader(br bitreader.BitReader) ([]byte, error) {
@@ -119,14 +123,16 @@ func (dec *DecPSPackage) decPackHeader(br bitreader.BitReader) ([]byte, error) {
 			if err := dec.decProgramStreamMap(br); err != nil {
 				return nil, err
 			}
-		case StartCodeVideo:
-			fallthrough
-		case StartCodeAudio:
-			if err := dec.decPESPacket(br); err != nil {
-				return nil, err
-			}
+			dec.iframe = true
 		case MEPGProgramEndCode:
 			return dec.rawData[:dec.rawLen], nil
+		default:
+			VideoCode := nextStartCode & 0xfffffff0
+			if VideoCode == StartCodeVideo {
+				if err := dec.decPESPacket(br); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 }
@@ -215,20 +221,89 @@ func (dec *DecPSPackage) decProgramStreamMap(br bitreader.BitReader) error {
 	return nil
 }
 
+var ErrMarkerNotFound = errors.New("marker not found")
+
+func readTimeStamp(marker uint32, reader bitreader.BitReader) (uint32, uint32, error) {
+
+	var (
+		timeStamp uint32
+		err       error
+		val       uint32
+	)
+
+	val, err = reader.Read32(4)
+	if err != nil {
+		return 0, 0, ErrMarkerNotFound
+	}
+
+	val, err = reader.Read32(3)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	timeStamp = timeStamp | (val << 30)
+
+	val, err = reader.Read32(1)
+	if val != 1 || err != nil {
+		return 0, 0, ErrMarkerNotFound
+	}
+
+	val, err = reader.Read32(15)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	timeStamp = timeStamp | (val << 15)
+
+	val, err = reader.Read32(1)
+	if val != 1 || err != nil {
+		return 0, 0, ErrMarkerNotFound
+	}
+
+	val, err = reader.Read32(15)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	timeStamp = timeStamp | val
+
+	val, err = reader.Read32(1)
+	if val != 1 || err != nil {
+		return 0, 0, ErrMarkerNotFound
+	}
+
+	return timeStamp, 5, nil
+}
+
 func (dec *DecPSPackage) decPESPacket(br bitreader.BitReader) error {
 
 	payloadlen, err := br.Read32(16)
 	if err != nil {
 		return err
 	}
-	br.Skip(16)
+	br.Skip(8)
+	ptsFlag, err := br.Read32(2)
+	if err != nil {
+		return err
+	}
+	br.Skip(6)
 
 	payloadlen -= 2
 	if pesHeaderDataLen, err := br.Read32(8); err != nil {
 		return err
 	} else {
 		payloadlen--
-		br.Skip(uint(pesHeaderDataLen * 8))
+
+		if ptsFlag >= 2 && pesHeaderDataLen >= 5 {
+			var len uint32 = 0
+			dec.pts, len, err = readTimeStamp(0, br)
+			if err != nil {
+				return err
+			}
+			br.Skip(uint((pesHeaderDataLen - len) * 8))
+		} else {
+			br.Skip(uint(pesHeaderDataLen * 8))
+		}
 		payloadlen -= pesHeaderDataLen
 	}
 
