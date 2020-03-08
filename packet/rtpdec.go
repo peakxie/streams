@@ -13,8 +13,8 @@ type RtpParsePacket struct {
 func NewRtpParsePacket() *RtpParsePacket {
 	return &RtpParsePacket{
 		psDenc: &DecPSPackage{
-			rawData: make([]byte, MAXFrameLen),
-			rawLen:  0,
+			RawData: make([]byte, MAXFrameLen),
+			RawLen:  0,
 		},
 	}
 }
@@ -27,7 +27,7 @@ func (rtp *RtpParsePacket) Read(data []byte) ([]byte, error) {
 	br := bitreader.NewReader(bytes.NewReader(data))
 
 	if rtp.psDenc != nil {
-		return rtp.psDenc.decPackHeader(br)
+		return rtp.psDenc.DecPackHeader(br)
 	}
 
 	return nil, nil

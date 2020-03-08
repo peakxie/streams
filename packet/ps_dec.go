@@ -2,6 +2,7 @@ package packet
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/32bitkid/bitreader"
@@ -15,16 +16,16 @@ type DecPSPackage struct {
 	systemClockReferenceExtension uint64
 	programMuxRate                uint32
 
-	rawData         []byte
-	rawLen          int
+	RawData         []byte
+	RawLen          int
 	videoStreamType uint32
 	audioStreamType uint32
 
-	iframe bool
-	pts    uint32
+	Iframe bool
+	Pts    uint32
 }
 
-func (dec *DecPSPackage) decPackHeader(br bitreader.BitReader) ([]byte, error) {
+func (dec *DecPSPackage) DecPackHeader(br bitreader.BitReader) ([]byte, error) {
 
 	startcode, err := br.Read32(32)
 	if err != nil {
@@ -123,9 +124,9 @@ func (dec *DecPSPackage) decPackHeader(br bitreader.BitReader) ([]byte, error) {
 			if err := dec.decProgramStreamMap(br); err != nil {
 				return nil, err
 			}
-			dec.iframe = true
+			dec.Iframe = true
 		case MEPGProgramEndCode:
-			return dec.rawData[:dec.rawLen], nil
+			return dec.RawData[:dec.RawLen], nil
 		default:
 			VideoCode := nextStartCode & 0xfffffff0
 			if VideoCode == StartCodeVideo {
@@ -295,8 +296,9 @@ func (dec *DecPSPackage) decPESPacket(br bitreader.BitReader) error {
 		payloadlen--
 
 		if ptsFlag >= 2 && pesHeaderDataLen >= 5 {
+			fmt.Println(ptsFlag, "   ", pesHeaderDataLen)
 			var len uint32 = 0
-			dec.pts, len, err = readTimeStamp(0, br)
+			dec.Pts, len, err = readTimeStamp(0, br)
 			if err != nil {
 				return err
 			}
@@ -311,8 +313,8 @@ func (dec *DecPSPackage) decPESPacket(br bitreader.BitReader) error {
 	if _, err := io.ReadAtLeast(br, payloaddata, int(payloadlen)); err != nil {
 		return err
 	} else {
-		copy(dec.rawData[dec.rawLen:], payloaddata)
-		dec.rawLen += int(payloadlen)
+		copy(dec.RawData[dec.RawLen:], payloaddata)
+		dec.RawLen += int(payloadlen)
 	}
 
 	return nil
