@@ -1,12 +1,10 @@
 package main
 
 import (
-	"streams/packet"
-
-	"github.com/nareix/joy4/format"
-
 	"github.com/nareix/joy4/av"
 	"github.com/nareix/joy4/av/avutil"
+	"github.com/nareix/joy4/format"
+	"github.com/peakxie/streams/packet"
 	log "github.com/sirupsen/logrus"
 )
 

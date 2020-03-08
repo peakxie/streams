@@ -1,8 +1,7 @@
 package main
 
 import (
-	"streams/packet"
-
+	"github.com/peakxie/streams/packet"
 	log "github.com/sirupsen/logrus"
 )
 
