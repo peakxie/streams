@@ -21,99 +21,100 @@ type DecPSPackage struct {
 	audioStreamType uint32
 
 	Iframe bool
-	Pts    uint32
+	Pts    uint64
+	Dts    uint64
 }
 
-func (dec *DecPSPackage) DecPackHeader(br bitreader.BitReader) ([]byte, error) {
+func (dec *DecPSPackage) DecPackHeader(br bitreader.BitReader) error {
 
 	startcode, err := br.Read32(32)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if startcode == StartCodeAudio {
 		audioPayloadLen, err := br.Read32(16)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		br.Skip(uint(audioPayloadLen * 8))
 		startcode, err = br.Read32(32)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if startcode != StartCodePS {
-		return nil, ErrNotFoundStartCode
+		return ErrNotFoundStartCode
 	}
 
 	if marker, err := br.Read32(2); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 
 	if s, err := br.Read32(3); err != nil {
-		return nil, err
+		return err
 	} else {
 		dec.systemClockReferenceBase |= uint64(s << 30)
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 
 	if s, err := br.Read32(15); err != nil {
-		return nil, err
+		return err
 	} else {
 		dec.systemClockReferenceBase |= uint64(s << 15)
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 	if s, err := br.Read32(15); err != nil {
-		return nil, err
+		return err
 	} else {
 		dec.systemClockReferenceBase |= uint64(s)
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 	if s, err := br.Read32(9); err != nil {
-		return nil, err
+		return err
 	} else {
 		dec.systemClockReferenceExtension |= uint64(s)
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 
 	if pmr, err := br.Read32(22); err != nil {
-		return nil, err
+		return err
 	} else {
 		dec.programMuxRate |= pmr
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 	if marker, err := br.Read32(1); err != nil {
-		return nil, err
+		return err
 	} else if marker != 0x01 {
-		return nil, ErrMarkerBit
+		return ErrMarkerBit
 	}
 
 	if err := br.Skip(5); err != nil {
-		return nil, err
+		return err
 	}
 	if psl, err := br.Read32(3); err != nil {
-		return nil, err
+		return err
 	} else {
 		br.Skip(uint(psl * 8))
 	}
@@ -122,26 +123,26 @@ func (dec *DecPSPackage) DecPackHeader(br bitreader.BitReader) ([]byte, error) {
 	for {
 		nextStartCode, err := br.Read32(32)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		switch nextStartCode {
 		case StartCodeSYS:
 			if err := dec.decSystemHeader(br); err != nil {
-				return nil, err
+				return err
 			}
 		case StartCodeMAP:
 			if err := dec.decProgramStreamMap(br); err != nil {
-				return nil, err
+				return err
 			}
 			dec.Iframe = true
 		case MEPGProgramEndCode:
-			return dec.RawData[:dec.RawLen], nil
+		//	return dec.RawData[:dec.RawLen], nil
 		default:
 			VideoCode := nextStartCode & 0xfffffff0
 			if VideoCode == StartCodeVideo {
 				if err := dec.decPESPacket(br); err != nil {
-					return nil, err
+					return err
 				}
 			}
 		}
@@ -234,51 +235,51 @@ func (dec *DecPSPackage) decProgramStreamMap(br bitreader.BitReader) error {
 
 var ErrMarkerNotFound = errors.New("marker not found")
 
-func readTimeStamp(marker uint32, reader bitreader.BitReader) (uint32, uint32, error) {
+func readTimeStamp(marker uint64, reader bitreader.BitReader) (uint64, uint32, error) {
 
 	var (
-		timeStamp uint32
+		timeStamp uint64
 		err       error
-		val       uint32
+		val       uint64
 	)
 
-	val, err = reader.Read32(4)
-	if err != nil {
+	val, err = reader.Read64(4)
+	if val != marker || err != nil {
 		return 0, 0, ErrMarkerNotFound
 	}
 
-	val, err = reader.Read32(3)
+	val, err = reader.Read64(3)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	timeStamp = timeStamp | (val << 30)
 
-	val, err = reader.Read32(1)
+	val, err = reader.Read64(1)
 	if val != 1 || err != nil {
 		return 0, 0, ErrMarkerNotFound
 	}
 
-	val, err = reader.Read32(15)
+	val, err = reader.Read64(15)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	timeStamp = timeStamp | (val << 15)
 
-	val, err = reader.Read32(1)
+	val, err = reader.Read64(1)
 	if val != 1 || err != nil {
 		return 0, 0, ErrMarkerNotFound
 	}
 
-	val, err = reader.Read32(15)
+	val, err = reader.Read64(15)
 	if err != nil {
 		return 0, 0, err
 	}
 
 	timeStamp = timeStamp | val
 
-	val, err = reader.Read32(1)
+	val, err = reader.Read64(1)
 	if val != 1 || err != nil {
 		return 0, 0, ErrMarkerNotFound
 	}
@@ -305,13 +306,24 @@ func (dec *DecPSPackage) decPESPacket(br bitreader.BitReader) error {
 	} else {
 		payloadlen--
 
-		if ptsFlag >= 2 && pesHeaderDataLen >= 5 {
-			var len uint32 = 0
-			dec.Pts, len, err = readTimeStamp(0, br)
+		var len uint32 = 0
+		if ptsFlag == 2 && pesHeaderDataLen >= 5 {
+			dec.Pts, len, err = readTimeStamp(2, br)
 			if err != nil {
 				return err
 			}
 			br.Skip(uint((pesHeaderDataLen - len) * 8))
+		} else if ptsFlag == 3 && pesHeaderDataLen >= 10 {
+			dec.Pts, len, err = readTimeStamp(3, br)
+			if err != nil {
+				return err
+			}
+			dec.Dts, len, err = readTimeStamp(1, br)
+			if err != nil {
+				return err
+			}
+			br.Skip(uint((pesHeaderDataLen - len - len) * 8))
+
 		} else {
 			br.Skip(uint(pesHeaderDataLen * 8))
 		}
